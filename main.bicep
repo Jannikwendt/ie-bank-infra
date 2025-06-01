@@ -1,109 +1,105 @@
-@sys.description('The environment type (nonprod or prod)')
+// ── Parameters ─────────────────────────────────────────────
 @allowed([
-  'nonprod'
-  'prod'
+  'dev'
+  'uat'
 ])
-param environmentType string = 'nonprod'
-@sys.description('The PostgreSQL Server name')
-@minLength(3)
-@maxLength(24)
-param postgreSQLServerName string = 'ie-bank-db-server-dev'
-@sys.description('The PostgreSQL Database name')
-@minLength(3)
-@maxLength(24)
-param postgreSQLDatabaseName string = 'ie-bank-db'
-@sys.description('The App Service Plan name')
-@minLength(3)
-@maxLength(24)
-param appServicePlanName string = 'ie-bank-app-sp-dev'
-@sys.description('The Web App name (frontend)')
-@minLength(3)
-@maxLength(24)
-param appServiceAppName string = 'ie-bank-dev'
-@sys.description('The API App name (backend)')
-@minLength(3)
-@maxLength(24)
-param appServiceAPIAppName string = 'ie-bank-api-dev'
-@sys.description('The Azure location where the resources will be deployed')
-param location string = resourceGroup().location
-@sys.description('The value for the environment variable ENV')
-param appServiceAPIEnvVarENV string
-@sys.description('The value for the environment variable DBHOST')
-param appServiceAPIEnvVarDBHOST string
-@sys.description('The value for the environment variable DBNAME')
-param appServiceAPIEnvVarDBNAME string
-@sys.description('The value for the environment variable DBPASS')
-@secure()
-param appServiceAPIEnvVarDBPASS string
-@sys.description('The value for the environment variable DBUSER')
-param appServiceAPIDBHostDBUSER string
-@sys.description('The value for the environment variable FLASK_APP')
-param appServiceAPIDBHostFLASK_APP string
-@sys.description('The value for the environment variable FLASK_DEBUG')
-param appServiceAPIDBHostFLASK_DEBUG string
+param env string                              // dev | uat  (controls SKUs & names)
+param location string  = resourceGroup().location
 
-resource postgresSQLServer 'Microsoft.DBforPostgreSQL/flexibleServers@2022-12-01' = {
-  name: postgreSQLServerName
-  location: location
-  sku: {
-    name: 'Standard_B1ms'
-    tier: 'Burstable'
-  }
-  properties: {
-    administratorLogin: 'iebankdbadmin'
-    administratorLoginPassword: 'IE.Bank.DB.Admin.Pa$$'
-    createMode: 'Default'
-    highAvailability: {
-      mode: 'Disabled'
-      standbyAvailabilityZone: ''
+// passwords are fed by pipeline as secure parameters
+@secure()
+param dbAdminPassword string
+@secure()
+param dbAdminUser string = '${env}admin'      // safe default
+
+// ── Naming helpers ─────────────────────────────────────────
+var prefix        = 'iebank-${env}'           // iebank-dev / iebank-uat
+var postgresName  = '${prefix}-pgsql'
+var planName      = '${prefix}-plan'
+var feSiteName    = '${prefix}-fe'
+var beSiteName    = '${prefix}-be'
+
+// ── SKUs per environment ───────────────────────────────────
+var pgSku  = (env == 'uat')
+  ? 'Standard_B1ms'   // 1 vCPU, 2 GiB  (assignment spec)
+  : 'Burstable_B0'
+
+var appSku = (env == 'uat')
+  ? {
+      tier:  'Basic'
+      size:  'B1'
     }
+  : {
+      tier:  'Free'
+      size:  'F1'
+    }
+
+// ── Resources ──────────────────────────────────────────────
+resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2022-01-20-preview' = {
+  name:   postgresName
+  location: location
+  properties: {
+    administratorLogin:         dbAdminUser
+    administratorLoginPassword: dbAdminPassword
+    version:                    '15'
     storage: {
       storageSizeGB: 32
     }
-    backup: {
-      backupRetentionDays: 7
-      geoRedundantBackup: 'Disabled'
-    }
-    version: '15'
   }
-
-  resource postgresSQLServerFirewallRules 'firewallRules@2022-12-01' = {
-    name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'
-    properties: {
-      endIpAddress: '0.0.0.0'
-      startIpAddress: '0.0.0.0'
-    }
+  sku: {
+    name: pgSku
+    tier: 'Burstable'
   }
 }
 
-resource postgresSQLDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2022-12-01' = {
-  name: postgreSQLDatabaseName
-  parent: postgresSQLServer
+resource appPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
+  name: planName
+  location: location
+  kind: 'linux'
+  sku: appSku
   properties: {
-    charset: 'UTF8'
-    collation: 'en_US.UTF8'
+    reserved: true            // Linux
   }
 }
 
-module appService 'modules/app-service.bicep' = {
-  name: 'appService'
-  params: {
-    location: location
-    environmentType: environmentType
-    appServiceAppName: appServiceAppName
-    appServiceAPIAppName: appServiceAPIAppName
-    appServicePlanName: appServicePlanName
-    appServiceAPIDBHostDBUSER: appServiceAPIDBHostDBUSER
-    appServiceAPIDBHostFLASK_APP: appServiceAPIDBHostFLASK_APP
-    appServiceAPIDBHostFLASK_DEBUG: appServiceAPIDBHostFLASK_DEBUG
-    appServiceAPIEnvVarDBHOST: appServiceAPIEnvVarDBHOST
-    appServiceAPIEnvVarDBNAME: appServiceAPIEnvVarDBNAME
-    appServiceAPIEnvVarDBPASS: appServiceAPIEnvVarDBPASS
-    appServiceAPIEnvVarENV: appServiceAPIEnvVarENV
+resource feSite 'Microsoft.Web/sites@2022-09-01' = {
+  name: feSiteName
+  location: location
+  kind: 'app,linux'
+  properties: {
+    serverFarmId: appPlan.id
+    siteConfig: {
+      linuxFxVersion: 'NODE|18-lts'
+    }
   }
-  dependsOn: [
-    postgresSQLDatabase
-  ]
 }
 
-output appServiceAppHostName string = appService.outputs.appServiceAppHostName
+resource beSite 'Microsoft.Web/sites@2022-09-01' = {
+  name: beSiteName
+  location: location
+  kind: 'app,linux'
+  properties: {
+    serverFarmId: appPlan.id
+    siteConfig: {
+      linuxFxVersion: 'PYTHON|3.11'
+      appSettings: [
+        {
+          name:  'DBHOST'
+          value: postgres.properties.fullyQualifiedDomainName
+        }
+        {
+          name:  'DBUSER'
+          value: dbAdminUser
+        }
+        {
+          name:  'DBPASS'
+          value: dbAdminPassword
+        }
+      ]
+    }
+  }
+}
+
+// ── Outputs (handy in portal) ──────────────────────────────
+output frontEndUrl string = 'https://${feSiteName}.azurewebsites.net'
+output backEndUrl string = 'https://${beSiteName}.azurewebsites.net'

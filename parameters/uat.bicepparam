@@ -1,1 +1,0 @@
-<paste uat param file>

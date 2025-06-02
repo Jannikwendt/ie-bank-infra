@@ -10,7 +10,7 @@ param location string  = resourceGroup().location
 @secure()
 param dbAdminPassword string
 @secure()
-param dbAdminUser string = '${env}admin'      // safe default
+param dbAdminUser string      // must be provided securely at deployment
 
 // ── Naming helpers ─────────────────────────────────────────
 var prefix        = 'iebank-${env}'           // iebank-dev / iebank-uat

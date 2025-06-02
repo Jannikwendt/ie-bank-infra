@@ -8,6 +8,7 @@ param location string  = resourceGroup().location
 
 // passwords are fed by pipeline as secure parameters
 @secure()
+@description('Admin password for PostgreSQL')
 param dbAdminPassword string
 @secure()
 param dbAdminUser string      // must be provided securely at deployment

@@ -1,5 +1,6 @@
+// ──────────────  UAT (runs on pull-request → main)  ───────────────
 using 'main.bicep'
-param env             = 'uat'
-param dbAdminPassword = 'PLACEHOLDER'
-param dbAdminUser     = 'adminuser'
-param location = 'westeurope'
+
+param env          = 'uat'
+param location     = 'westeurope'
+param dbAdminUser  = 'iebankdbadmin'

@@ -1,7 +1,6 @@
+// ──────────────  Development (runs on every branch)  ──────────────
+using 'main.bicep'
 
-using './main.bicep'
-
-param env              = 'dev'
-param dbAdminUser      = ''   // TODO: set the database admin username
-param dbAdminPassword  = ''   // will be overridden by workflow
-param location = 'westeurope'
+param env          = 'dev'            // the app will read ENV=development
+param location     = 'westeurope'     // keep in sync with RG
+param dbAdminUser  = 'iebankdbadmin'  // ← whatever name you used

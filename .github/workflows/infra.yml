@@ -1,25 +1,29 @@
 name: ie-bank-infra
 
 on:
-  # ─── Dev  → any branch *except* main ───────────────
-  push:
-    branches-ignore: [ main ]
-
-  # ─── UAT → PRs that target main *and* the merge-commit ───
-  pull_request:
-    branches: [ main ]
-
-  # manual button
+  # ---- manual button ----
   workflow_dispatch:
 
+  # ---- Dev: any branch except main ----
+  push:
+    branches-ignore: [ main ]
+    paths-ignore:   [ 'scripts/**' ]
+
+  # ---- UAT: PRs that target main + merge on main ----
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
 env:
-  RG_NAME:          BCSAI2024-DEVOPS-RETAKERS-DEV
-  LOCATION:         westeurope
-  PARAM_FILE_DEV:   dev.bicepparam
-  PARAM_FILE_UAT:   uat.bicepparam
+  SUBSCRIPTION_ID: e0b9cada-61bc-4b5a-bd7a-52c606726b3b
+  RG_NAME:         BCSAI2024-DEVOPS-RETAKERS-DEV   # <-- your resource-group
+  USER_ALIAS:      jwendt
+  PARAM_FILE_DEV:  dev.bicepparam
+  PARAM_FILE_UAT:  uat.bicepparam
 
 jobs:
-  # ---------- BUILD (lint) ----------
+# ──────────────────────────── BUILD ────────────────────────────
   build:
     runs-on: ubuntu-latest
     steps:
@@ -27,37 +31,40 @@ jobs:
       - name: Bicep lint
         run: az bicep build --file main.bicep
 
-  # ---------- DEPLOY ----------
+# ──────────────────────────── DEPLOY ───────────────────────────
   deploy:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      id-token: write      # OIDC login
-      contents:  read
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure login
-        uses: azure/login@v2
+      # Azure login via OIDC
+      - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Pick param file (Dev vs UAT)
-        id: pick
+      # pick the right param file
+      - id: pick
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/main" ]]; then
-            echo "file=${PARAM_FILE_DEV}" >> $GITHUB_OUTPUT
+            echo "file=${{ env.PARAM_FILE_DEV }}" >> $GITHUB_OUTPUT
           else
-            echo "file=${PARAM_FILE_UAT}" >> $GITHUB_OUTPUT
+            echo "file=${{ env.PARAM_FILE_UAT }}" >> $GITHUB_OUTPUT
           fi
 
+      # deploy
       - name: Deploy Bicep
-        uses: azure/cli@v2
+        uses: azure/arm-deploy@v1
         with:
-          inlineScript: |
-            az deployment group create \
-              --resource-group  $RG_NAME \
-              --name            "iebank-${{ github.run_number }}" \
-              --template-file   main.bicep \
-              --parameters      ${{ steps.pick.outputs.file }} \
-              --parameters      dbAdminPassword='${{ secrets.DB_ADMIN_PASSWORD }}'
+          subscriptionId:   ${{ env.SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ env.RG_NAME }}
+          deploymentName:   "${{ env.USER_ALIAS }}-${{ github.run_number }}"
+          template:         main.bicep
+          parameters: |
+            ${{ steps.pick.outputs.file }}
+            dbAdminPassword=${{ secrets.DBPASS }}
+            appServiceAPIEnvVarDBPASS=${{ secrets.DBPASS }}
+            appServiceAPIDBHostDBUSER=${{ secrets.DBUSER }}

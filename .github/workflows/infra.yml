@@ -1,24 +1,25 @@
 name: ie-bank-infra
 
 on:
-  # Dev → any branch except main
+  # ─── Dev  → any branch *except* main ───────────────
   push:
-    branches: [ main ]
     branches-ignore: [ main ]
-  # UAT → PRs targeting main  +  merge commit on main
+
+  # ─── UAT → PRs that target main *and* the merge-commit ───
   pull_request:
     branches: [ main ]
+
+  # manual button
   workflow_dispatch:
 
 env:
-  RG_NAME:            ie-bank              # reuse the same RG
-  LOCATION:           westeurope           # change if you like
-  # which bicep param file to use
-  PARAM_FILE_DEV:     dev.bicepparam
-  PARAM_FILE_UAT:     uat.bicepparam
+  RG_NAME:          ie-bank
+  LOCATION:         westeurope
+  PARAM_FILE_DEV:   dev.bicepparam
+  PARAM_FILE_UAT:   uat.bicepparam
 
 jobs:
-# ─────────── BUILD (lint/compile) ──────────────────────────
+  # ---------- BUILD (lint) ----------
   build:
     runs-on: ubuntu-latest
     steps:
@@ -26,13 +27,13 @@ jobs:
       - name: Bicep lint
         run: az bicep build --file main.bicep
 
-# ─────────── DEPLOY  ──────────────────────────────────────
+  # ---------- DEPLOY ----------
   deploy:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      id-token: write        # for OIDC login
-      contents: read
+      id-token: write      # OIDC login
+      contents:  read
     steps:
       - uses: actions/checkout@v4
 
@@ -41,13 +42,13 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Select param file
+      - name: Pick param file (Dev vs UAT)
         id: pick
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/main" ]]; then
-            echo "file=${PARAM_FILE_DEV}"      >> $GITHUB_OUTPUT
+            echo "file=${PARAM_FILE_DEV}" >> $GITHUB_OUTPUT
           else
-            echo "file=${PARAM_FILE_UAT}"      >> $GITHUB_OUTPUT
+            echo "file=${PARAM_FILE_UAT}" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy Bicep
@@ -55,8 +56,8 @@ jobs:
         with:
           inlineScript: |
             az deployment group create \
-              --resource-group   $RG_NAME \
+              --resource-group  $RG_NAME \
               --name            "iebank-${{ github.run_number }}" \
-              --template-file    main.bicep \
-              --parameters       ${{ steps.pick.outputs.file }} \
-              --parameters       dbAdminPassword='${{ secrets.DB_ADMIN_PASSWORD }}'
+              --template-file   main.bicep \
+              --parameters      ${{ steps.pick.outputs.file }} \
+              --parameters      dbAdminPassword='${{ secrets.DB_ADMIN_PASSWORD }}'

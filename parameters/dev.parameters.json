@@ -6,22 +6,22 @@
             "value": "nonprod"
         },
         "postgreSQLServerName": {
-            "value": "jseijas-dbsrv-dev"
+            "value": "jwendt-dbsrv-dev"
         },
         "postgreSQLDatabaseName": {
-            "value": "jseijas-db-dev"
+            "value": "jwendt-db-dev"
         },
         "appServicePlanName": {
-            "value": "jseijas-asp-dev"
+            "value": "jwendt-asp-dev"
         },
         "appServiceAPIAppName": {
-            "value": "jseijas-be-dev"
+            "value": "jwendt-be-dev"
         },
         "appServiceAppName": {
-            "value": "jseijas-fe-dev"
+            "value": "jwendt-fe-dev"
         },
         "location": {
-            "value": "North Europe"
+            "value": "westeurope"
         }
     }
 }
